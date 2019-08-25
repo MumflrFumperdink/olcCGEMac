@@ -9,7 +9,7 @@ This is a port of the [ConsoleGameEngine](https://github.com/OneLoneCoder/videos
 There is a makefile premade! Just type in the terminal:
 
 ```sh
-$ cd olcPCEMac/
+$ cd olcCGEMac/
 $ make
 ```
 
