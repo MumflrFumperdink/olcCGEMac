@@ -1,4 +1,4 @@
-# olc::PCE for Mac
+# olc::CGE for Mac
 
 This is a port of the [ConsoleGameEngine](https://github.com/OneLoneCoder/videos/blob/master/olcConsoleGameEngine.h), by [OneLoneCoder](https://onelonecoder.com/) to Mac. The dependencies that you must have are:
 
