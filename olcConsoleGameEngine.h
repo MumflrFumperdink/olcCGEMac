@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <termios.h>
+#include <fstream>
 #include <iostream>
 #include <unistd.h>
 #include <stdlib.h>
@@ -23,6 +24,7 @@
 #include <vector>
 #include <iomanip>
 #include <codecvt>
+#include <map>
 
 enum COLOUR {
     RESET           = 0,
@@ -35,6 +37,16 @@ enum COLOUR {
     FG_MAGENTA      = 35,
     FG_CYAN         = 36,
     FG_WHITE        = 37,
+
+    //Values >=50 represent the same color + bold ("darker")
+    FG_DARK_BLACK   = 50,
+    FG_DARK_RED     = 51,
+    FG_DARK_GREEN   = 52,
+    FG_DARK_YELLOW  = 53,
+    FG_DARK_BLUE    = 54,
+    FG_DARK_MAGENTA = 55,
+    FG_DARK_CYAN    = 56,
+    FG_DARK_WHITE   = 57,
 
     BG_BLACK        = 40,
     BG_RED          = 41,
@@ -54,6 +66,213 @@ enum PIXEL_TYPE
     PIXEL_QUARTER = 0x2591
 };
 
+class olcSprite
+{
+public:
+    olcSprite()
+    {
+
+    }
+
+    olcSprite(int w, int h)
+    {
+        Create(w, h);
+    }
+
+    olcSprite(std::string sFile)
+    {
+        if (!Load(sFile))
+            Create(8, 8);
+    }
+
+    int nWidth = 0;
+    int nHeight = 0;
+
+private:
+    static const std::map<short, short> convertFromMac;
+    static const std::map<short, short> convertToMac;
+
+    short *m_Glyphs = nullptr;
+    short *m_Colours = nullptr;
+
+    void Create(int w, int h)
+    {
+        nWidth = w;
+        nHeight = h;
+        m_Glyphs = new short[w*h];
+        m_Colours = new short[w*h];
+        for (int i = 0; i < w*h; i++)
+        {
+            m_Glyphs[i] = L' ';
+            m_Colours[i] = 0;
+        }
+    }
+
+public:
+    void SetGlyph(int x, int y, short c)
+    {
+        if (x <0 || x >= nWidth || y < 0 || y >= nHeight)
+            return;
+        else
+            m_Glyphs[y * nWidth + x] = c;
+    }
+
+    void SetColour(int x, int y, short c)
+    {
+        if (x <0 || x >= nWidth || y < 0 || y >= nHeight)
+            return;
+        else
+            m_Colours[y * nWidth + x] = c;
+    }
+
+    short GetGlyph(int x, int y)
+    {
+        if (x <0 || x >= nWidth || y < 0 || y >= nHeight)
+            return L' ';
+        else
+            return m_Glyphs[y * nWidth + x];
+    }
+
+    short GetColour(int x, int y)
+    {
+        if (x <0 || x >= nWidth || y < 0 || y >= nHeight)
+            return 0;
+        else
+            return m_Colours[y * nWidth + x];
+    }
+
+    short SampleGlyph(float x, float y)
+    {
+        int sx = (int)(x * (float)nWidth);
+        int sy = (int)(y * (float)nHeight-1.0f);
+        if (sx <0 || sx >= nWidth || sy < 0 || sy >= nHeight)
+            return L' ';
+        else
+            return m_Glyphs[sy * nWidth + sx];
+    }
+
+    short SampleColour(float x, float y)
+    {
+        int sx = (int)(x * (float)nWidth);
+        int sy = (int)(y * (float)nHeight-1.0f);
+        if (sx <0 || sx >= nWidth || sy < 0 || sy >= nHeight)
+            return 0;
+        else
+            return m_Colours[sy * nWidth + sx];
+    }
+
+    bool Save(std::string sFile)
+    {
+        FILE *f = nullptr;
+        f = fopen(sFile.c_str(), "wb");
+        if (f == nullptr)
+            return false;
+
+        short windowsColors[nWidth * nHeight];
+        for (int i = 0; i < nWidth * nHeight; i++)
+            windowsColors[i] = convertFromMac.at(m_Colours[i]);
+
+        fwrite(&nWidth, sizeof(int), 1, f);
+        fwrite(&nHeight, sizeof(int), 1, f);
+        fwrite(windowsColors, sizeof(short), nWidth * nHeight, f);
+        fwrite(m_Glyphs, sizeof(short), nWidth * nHeight, f);
+
+        fclose(f);
+
+        return true;
+    }
+
+    bool Load(std::string sFile)
+    {
+        delete[] m_Glyphs;
+        delete[] m_Colours;
+        nWidth = 0;
+        nHeight = 0;
+
+        FILE *f = nullptr;
+        f = fopen(sFile.c_str(), "rb");
+        if (f == nullptr)
+            return false;
+
+        std::fread(&nWidth, sizeof(int), 1, f);
+        std::fread(&nHeight, sizeof(int), 1, f);
+
+        Create(nWidth, nHeight);
+
+        std::fread(m_Colours, sizeof(short), nWidth * nHeight, f);
+        std::fread(m_Glyphs, sizeof(short), nWidth * nHeight, f);
+
+        for (int i = 0; i < nWidth * nHeight; i++)
+            m_Colours[i] = convertToMac.at(m_Colours[i]);
+
+        std::fclose(f);
+        return true;
+    }
+};
+
+const std::map<short, short> olcSprite::convertFromMac = {
+    {RESET,           0x0000},
+    {FG_BLACK,        0x0000},
+    {FG_DARK_BLUE,    0x0001},
+    {FG_DARK_GREEN,   0x0002},
+    {FG_DARK_CYAN,    0x0003},
+    {FG_DARK_RED,     0x0004},
+    {FG_DARK_MAGENTA, 0x0005},
+    {FG_DARK_YELLOW,  0x0006},
+    {2,               0x0007},
+    {FG_BLUE,         0x0009},
+    {FG_GREEN,        0x000A},
+    {FG_CYAN,         0x000B},
+    {FG_RED,          0x000C},
+    {FG_MAGENTA,      0x000D},
+    {FG_YELLOW,       0x000E},
+    {FG_WHITE,        0x000F},
+    {BG_BLACK,        0x0000},
+    {BG_BLUE,         0x0090},
+    {BG_GREEN,        0x00A0},
+    {BG_CYAN,         0x00B0},
+    {BG_RED,          0x00C0},
+    {BG_MAGENTA,      0x00D0},
+    {BG_YELLOW,       0x00E0},
+    {BG_WHITE,        0x00F0}
+};
+
+const std::map<short, short> olcSprite::convertToMac = {
+    {0x0000, 0},
+    {0x0001, FG_DARK_BLUE},
+    {0x0002, FG_DARK_GREEN},
+    {0x0003, FG_DARK_CYAN},
+    {0x0004, FG_DARK_RED},
+    {0x0005, FG_DARK_MAGENTA},
+    {0x0006, FG_DARK_YELLOW},
+    {0x0007, 2},
+    {0x0008, 0},
+    {0x0009, FG_BLUE},
+    {0x000A, FG_GREEN},
+    {0x000B, FG_CYAN},
+    {0x000C, FG_RED},
+    {0x000D, FG_MAGENTA},
+    {0x000E, FG_YELLOW},
+    {0x000F, FG_WHITE},
+    //<Background Colors that do not have alt on mac (dark versions)>
+    {0x0010, BG_BLUE},
+    {0x0020, BG_GREEN},
+    {0x0030, BG_CYAN},
+    {0x0040, BG_RED},
+    {0x0050, BG_MAGENTA},
+    {0x0060, BG_YELLOW},
+    {0x0070, 0},
+    {0x0080, 0},
+    //</BG not on mac>
+    {0x0090, BG_BLUE},
+    {0x00A0, BG_GREEN},
+    {0x00B0, BG_CYAN},
+    {0x00C0, BG_RED},
+    {0x00D0, BG_MAGENTA},
+    {0x00E0, BG_YELLOW},
+    {0x00F0, BG_WHITE}
+};
+
 class olcConsoleGameEngine {
 
 private:
@@ -68,6 +287,8 @@ private:
     unsigned char keyMap[16];
 
     bool m_bAtomActive;
+
+    std::vector<std::string> errors;
 
 protected:
     std::wstring m_sAppName;
@@ -95,6 +316,10 @@ public:
         m_sAppName = L"Default";
     }
 
+    void addError(std::string err) {
+        errors.push_back(err);
+    }
+
     int ConstructConsole(int width, int height, int fontsize) {
         m_nScreenWidth = width;
         m_nScreenHeight = height;
@@ -109,10 +334,21 @@ public:
         blank = new char[m_nScreenWidth];
         for (int j = 0; j < m_nScreenWidth; j++) blank[j] = 0;
 
-        printf("\e[8;%d;%dt", m_nScreenHeight, m_nScreenWidth); //set width and height
+        system("osascript -e \"tell application \\\"Terminal\\\" to set current settings of front window to settings set \\\"Pro\\\"\"");
         char buffer[90];
         sprintf(buffer, "osascript -e \"tell application \\\"Terminal\\\" to set the font size of window 1 to %d\"", fontsize); //set font size
         system(buffer);
+        printf("\e[8;%d;%dt", m_nScreenHeight, m_nScreenWidth); //set width and height
+
+        // int lines = atoi(getenv("LINES"));
+        // int cols  = atoi(getenv("COLUMNS"));
+
+        // if (lines < m_nScreenHeight || cols < m_nScreenWidth) {
+        //     char buffer[45];
+        //     sprintf(buffer, "Window Size too large, only %d by %d", cols, lines);
+        //     addError(buffer);
+        //     return false;
+        // }
 
         return true;
     }
@@ -457,10 +693,21 @@ public:
         delete[] colors;
         delete[] blank;
 
-
         setColor(0);
         system("stty echo");
         resetTerm();
+
+        if (!errors.empty()) {
+            for (std::string &err : errors) {
+                setColor(FG_RED, 1);
+                std::cout << "Error: ";
+                setColor(0);
+                setColor(1);
+                std::cout << err << std::endl;
+                setColor(0);
+            }
+        }
+        errors.clear();
     }
 
 public:
@@ -544,13 +791,16 @@ private:
                 for (int i = 0; i < m_nScreenHeight; i++) {
                     if (memcmp(blank, colors[i], m_nScreenWidth)) {
                         for (int j = 0; j < m_nScreenWidth; j++) {
-                            if (colors[i][j]) setColor(colors[i][j]);
-                            else setColor(37, 40);
+                            if (colors[i][j]) {
+                                if (colors[i][j] >= 50) setColor(colors[i][j] - 20, 2);
+                                else setColor(colors[i][j]);
+                            }
+                            else setColor(0);
                             std::cout << codecvt.to_bytes(buffer[i][j]);
                         }
                     }
                     else {
-                        setColor(37, 40);
+                        setColor(0);
                         std::cout << codecvt.to_bytes(buffer[i]);
                     }
                     if (i < m_nScreenHeight - 1) std::cout << std::endl;
